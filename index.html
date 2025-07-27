@@ -1,0 +1,674 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>News Platform</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6; /* Light gray background */
+            color: #333;
+        }
+        /* Custom scrollbar for better aesthetics */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+        /* Hide default number input arrows */
+        input[type="number"]::-webkit-inner-spin-button,
+        input[type="number"]::-webkit-outer-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+        input[type="number"] {
+            -moz-appearance: textfield;
+        }
+
+        /* Toast Message Styles */
+        #messageBox {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: #333;
+            color: white;
+            padding: 12px 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+            z-index: 1000;
+            opacity: 0;
+            transition: opacity 0.3s ease-in-out;
+            pointer-events: none; /* Allows clicks to pass through when hidden */
+        }
+        #messageBox.show {
+            opacity: 1;
+        }
+
+        /* Loading Spinner Styles */
+        .spinner {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            border-left-color: #3b82f6; /* Blue-500 */
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Featured Message Styles */
+        #featuredMessageContainer {
+            overflow: hidden; /* Hide overflowing text during transition */
+            height: 40px; /* Fixed height to prevent layout shifts */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+            background-color: #e0f2fe; /* Light blue background */
+            color: #1e40af; /* Darker blue text */
+            font-weight: 600;
+            margin-top: 1rem; /* Space below header */
+            border-radius: 0.75rem; /* rounded-xl */
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); /* shadow-md */
+            padding: 0.5rem 1rem;
+        }
+        #featuredMessage {
+            position: absolute;
+            white-space: nowrap;
+            opacity: 0;
+            transform: translateY(100%); /* Start from bottom */
+            transition: opacity 0.5s ease-out, transform 0.5s ease-out;
+        }
+        #featuredMessage.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        #featuredMessage.hide {
+            opacity: 0;
+            transform: translateY(-100%); /* Exit to top */
+        }
+        
+    </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+    <!-- Header -->
+    <header class="bg-gradient-to-r from-blue-600 to-purple-700 text-white p-6 shadow-lg rounded-b-xl">
+        <div class="container mx-auto flex justify-between items-center">
+            <h1 class="text-4xl font-bold tracking-tight">Global News Hub</h1>
+            <button id="adminLoginBtn" class="bg-white text-blue-600 px-6 py-2 rounded-full shadow-md hover:bg-blue-50 transition duration-300 ease-in-out transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-white focus:ring-opacity-75">
+                Admin Login
+            </button>
+        </div>
+    </header>
+
+    <!-- Featured Message Section -->
+    <div id="featuredMessageContainer" class="container mx-auto">
+        <span id="featuredMessage" class="px-2 py-1 rounded-md bg-blue-100 text-blue-800 text-sm font-semibold">Featured: Welcome to Global News Hub!</span>
+    </div>
+
+    <!-- Main Content Area -->
+    <main class="container mx-auto my-8 p-6 flex-grow">
+        <!-- Admin Panel (initially hidden) -->
+        <section id="adminPanel" class="hidden bg-white p-8 mb-8 rounded-xl shadow-lg border border-gray-200">
+            <h2 class="text-3xl font-semibold mb-6 text-gray-800 border-b pb-3">Admin Dashboard</h2>
+
+            <!-- Admin Login Section -->
+            <div id="adminLoginSection">
+                <p class="text-lg mb-4 text-gray-600">Enter admin password to access content upload:</p>
+                <div class="flex items-center space-x-4">
+                    <input type="password" id="adminPassword" placeholder="Admin Password" class="flex-grow p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition duration-200">
+                    <button id="passwordSubmitBtn" class="bg-blue-600 text-white px-6 py-3 rounded-lg shadow-md hover:bg-blue-700 transition duration-300 ease-in-out transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-75">
+                        Submit
+                    </button>
+                </div>
+                <p id="passwordError" class="text-red-500 text-sm mt-2 hidden">Incorrect password. Please try again.</p>
+            </div>
+
+            <!-- News Upload Form (hidden until logged in) -->
+            <div id="newsUploadFormContainer" class="hidden">
+                <h3 class="text-2xl font-medium mb-4 text-gray-700">Upload New Article</h3>
+                <form id="newsForm" class="space-y-6">
+                    <div>
+                        <label for="articleTitle" class="block text-gray-700 text-sm font-bold mb-2">Article Title:</label>
+                        <input type="text" id="articleTitle" class="shadow-sm appearance-none border border-gray-300 rounded-lg w-full py-3 px-4 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition duration-200" placeholder="Enter article title" required>
+                    </div>
+                    <div>
+                        <label for="articleContent" class="block text-gray-700 text-sm font-bold mb-2">Article Content:</label>
+                        <textarea id="articleContent" rows="8" class="shadow-sm appearance-none border border-gray-300 rounded-lg w-full py-3 px-4 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition duration-200 resize-y" placeholder="Write your article content here..." required></textarea>
+                    </div>
+                    <div>
+                        <label for="articleImage" class="block text-gray-700 text-sm font-bold mb-2">Image Upload (Optional):</label>
+                        <input type="file" id="articleImage" accept="image/*" class="shadow-sm appearance-none border border-gray-300 rounded-lg w-full py-3 px-4 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition duration-200">
+                    </div>
+                    <button type="submit" class="bg-green-600 text-white px-8 py-3 rounded-lg shadow-md hover:bg-green-700 transition duration-300 ease-in-out transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-75">
+                        Publish Article
+                    </button>
+                </form>
+                <button id="adminLogoutBtn" class="bg-red-500 text-white px-6 py-2 rounded-lg shadow-md hover:bg-red-600 transition duration-300 ease-in-out mt-6 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-75">
+                    Logout
+                </button>
+            </div>
+        </section>
+
+        <!-- News Articles Section -->
+        <section class="bg-white p-8 rounded-xl shadow-lg border border-gray-200">
+            <h2 class="text-3xl font-semibold mb-6 text-gray-800 border-b pb-3">Latest News</h2>
+            <div id="loadingIndicator" class="flex justify-center items-center py-10 hidden">
+                <div class="spinner"></div>
+                <p class="ml-4 text-gray-600">Loading articles...</p>
+            </div>
+            <div id="newsArticlesContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                <!-- News articles will be dynamically loaded here -->
+                <p id="noNewsMessage" class="col-span-full text-center text-gray-500 text-lg">No news articles published yet. Stay tuned!</p>
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-gray-800 text-white p-6 mt-8 rounded-t-xl shadow-lg">
+        <div class="container mx-auto text-center text-gray-400">
+            &copy; 2025 Global News Hub. All rights reserved.
+        </div>
+    </footer>
+
+    <!-- Message Box (Toast Notification) -->
+    <div id="messageBox" class="hidden"></div>
+
+    <script>
+        // --- Global Variables ---
+        let ws;
+        const WEBSOCKET_SERVER_URL = 'ws://localhost:3000';
+        let newsArticles = []; // Stores articles with their comments and reactions
+        const ADMIN_PASSWORD = 'admin';
+        let isAdminLoggedIn = false;
+        // Simple client ID for comments/reactions. In a real app, this would be a user ID.
+        const CLIENT_ID = 'user_' + Math.random().toString(36).substring(2, 9);
+
+        // Rotating messages for the footer
+        const rotatingFooterMessages = [
+            "New features are dropping soon!",
+            "Thank you for joining us!",
+            "Stay informed with Global News Hub.",
+            "Your daily dose of reliable news.",
+            "We value your feedback!"
+        ];
+        let currentFooterMessageIndex = 0;
+        let footerMessageInterval; // To store the interval ID
+
+        // Rotating messages for the featured section at the top
+        const featuredMessages = [
+            "Welcome to Global News Hub!",
+            "Breaking news, delivered instantly.",
+            "Your trusted source for global updates.",
+            "Explore diverse perspectives.",
+            "Stay curious, stay informed."
+        ];
+        let currentFeaturedMessageIndex = 0;
+        let featuredMessageInterval;
+
+        // --- DOM Elements ---
+        const adminLoginBtn = document.getElementById('adminLoginBtn');
+        const adminPanel = document.getElementById('adminPanel');
+        const adminLoginSection = document.getElementById('adminLoginSection');
+        const adminPasswordInput = document.getElementById('adminPassword');
+        const passwordSubmitBtn = document.getElementById('passwordSubmitBtn');
+        const passwordError = document.getElementById('passwordError');
+        const newsUploadFormContainer = document.getElementById('newsUploadFormContainer');
+        const newsForm = document.getElementById('newsForm');
+        const articleTitleInput = document.getElementById('articleTitle');
+        const articleContentInput = document.getElementById('articleContent');
+        const articleImageInput = document.getElementById('articleImage'); // Now type="file"
+        const newsArticlesContainer = document.getElementById('newsArticlesContainer');
+        const noNewsMessage = document.getElementById('noNewsMessage');
+        const adminLogoutBtn = document.getElementById('adminLogoutBtn');
+        const messageBox = document.getElementById('messageBox');
+        const loadingIndicator = document.getElementById('loadingIndicator');
+        const footerText = document.querySelector('footer div'); // Select the div inside footer for messages
+        const featuredMessageElement = document.getElementById('featuredMessage');
+
+
+        // --- Helper Functions ---
+
+        /**
+         * Displays a temporary message box (toast notification).
+         * @param {string} message - The message to display.
+         * @param {string} type - 'success' or 'error' for styling (optional).
+         */
+        function showMessage(message, type = 'info') {
+            messageBox.textContent = message;
+            messageBox.classList.remove('hidden', 'bg-red-500', 'bg-green-500', 'bg-gray-800');
+            if (type === 'success') {
+                messageBox.classList.add('bg-green-500');
+            } else if (type === 'error') {
+                messageBox.classList.add('bg-red-500');
+            } else {
+                messageBox.classList.add('bg-gray-800');
+            }
+            messageBox.classList.add('show');
+
+            setTimeout(() => {
+                messageBox.classList.remove('show');
+                setTimeout(() => messageBox.classList.add('hidden'), 300); // Hide after transition
+            }, 3000); // Message visible for 3 seconds
+        }
+
+        /**
+         * Rotates the messages in the footer.
+         */
+        function startRotatingFooterMessages() {
+            // Initial display
+            footerText.textContent = rotatingFooterMessages[currentFooterMessageIndex];
+
+            // Set interval for rotation
+            footerMessageInterval = setInterval(() => {
+                currentFooterMessageIndex = (currentFooterMessageIndex + 1) % rotatingFooterMessages.length;
+                footerText.textContent = rotatingFooterMessages[currentFooterMessageIndex];
+            }, 30000); // Every 30 seconds
+        }
+
+        /**
+         * Rotates the featured messages at the top of the screen with a swipe effect.
+         */
+        function startFeaturedMessages() {
+            const displayNextMessage = () => {
+                featuredMessageElement.classList.remove('show');
+                featuredMessageElement.classList.add('hide');
+
+                setTimeout(() => {
+                    currentFeaturedMessageIndex = (currentFeaturedMessageIndex + 1) % featuredMessages.length;
+                    featuredMessageElement.textContent = `Featured: ${featuredMessages[currentFeaturedMessageIndex]}`;
+                    featuredMessageElement.classList.remove('hide');
+                    featuredMessageElement.classList.add('show');
+                }, 500); // Wait for hide transition to finish before showing next
+            };
+
+            // Initial display
+            featuredMessageElement.textContent = `Featured: ${featuredMessages[currentFeaturedMessageIndex]}`;
+            featuredMessageElement.classList.add('show');
+
+            featuredMessageInterval = setInterval(displayNextMessage, 3000); // Change every 3 seconds
+        }
+
+
+        /**
+         * Renders a single news article card, including comments and reactions.
+         * @param {object} article - The news article object.
+         * @returns {string} - HTML string for the news article card.
+         */
+        function renderNewsArticle(article) {
+            // Calculate reaction counts
+            const reactions = article.reactions || [];
+            const thumbsUpCount = reactions.filter(r => r.type === 'thumbs_up').length;
+            const loveCount = reactions.filter(r => r.type === 'love').length;
+            const sadCount = reactions.filter(r => r.type === 'sad').length;
+
+            // Generate comments HTML
+            const commentsHtml = (article.comments || []).map(comment => `
+                <div class="bg-gray-100 p-3 rounded-lg mb-2 text-sm">
+                    <p class="font-semibold text-gray-700">${comment.userName || 'Anonymous'}:</p>
+                    <p class="text-gray-600">${comment.commentText}</p>
+                    <span class="text-xs text-gray-500">${new Date(comment.timestamp).toLocaleString()}</span>
+                </div>
+            `).join('');
+
+            // Get saved user name from local storage to pre-fill comment input
+            const savedUserName = localStorage.getItem('userName') || '';
+
+            return `
+                <div class="bg-gray-50 p-6 rounded-xl shadow-md border border-gray-100 flex flex-col h-full transform transition duration-300 hover:scale-102 hover:shadow-lg" data-article-id="${article.id}">
+                    ${article.imageUrl ? `<img src="${article.imageUrl}" alt="${article.title}" class="w-full h-48 object-contain rounded-lg mb-4 shadow-sm onerror="this.onerror=null;this.src='https://placehold.co/600x400/E0E0E0/666666?text=Image+Not+Found';"">` : ''}
+                    <h3 class="text-xl font-semibold text-gray-800 mb-2">${article.title}</h3>
+                    <p class="text-gray-600 text-sm flex-grow mb-4">${article.content.substring(0, 250)}...</p>
+                    <div class="text-xs text-gray-400 mt-auto">Published: ${new Date(article.timestamp).toLocaleString()}</div>
+
+                    <!-- Reactions Section -->
+                    <div class="flex justify-around items-center py-3 border-t border-gray-200 mt-4">
+                        <button class="reaction-btn flex items-center space-x-1 text-gray-600 hover:text-blue-500 transition duration-200" data-article-id="${article.id}" data-reaction-type="thumbs_up">
+                            <i class="fas fa-thumbs-up"></i>
+                            <span class="reaction-count">${thumbsUpCount}</span>
+                        </button>
+                        <button class="reaction-btn flex items-center space-x-1 text-gray-600 hover:text-red-500 transition duration-200" data-article-id="${article.id}" data-reaction-type="love">
+                            <i class="fas fa-heart"></i>
+                            <span class="reaction-count">${loveCount}</span>
+                        </button>
+                        <button class="reaction-btn flex items-center space-x-1 text-gray-600 hover:text-yellow-500 transition duration-200" data-article-id="${article.id}" data-reaction-type="sad">
+                            <i class="fas fa-sad-tear"></i>
+                            <span class="reaction-count">${sadCount}</span>
+                        </button>
+                    </div>
+
+                    <!-- Comments Section -->
+                    <div class="mt-4 border-t border-gray-200 pt-4">
+                        <h4 class="text-lg font-medium text-gray-700 mb-3">Comments</h4>
+                        <div class="comments-list space-y-2 max-h-48 overflow-y-auto pr-2">
+                            ${commentsHtml.length > 0 ? commentsHtml : '<p class="text-gray-500 text-sm">No comments yet.</p>'}
+                        </div>
+                        <div class="mt-4 flex flex-col space-y-2">
+                            <input type="text" class="comment-user-name p-2 border border-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-blue-400" placeholder="Your Name (Optional)" data-article-id="${article.id}" value="${savedUserName}">
+                            <div class="flex space-x-2">
+                                <input type="text" class="comment-input flex-grow p-2 border border-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-blue-400" placeholder="Add a comment..." data-article-id="${article.id}">
+                                <button class="post-comment-btn bg-blue-500 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-600 transition duration-200" data-article-id="${article.id}">
+                                    Post
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        /**
+         * Updates the display of news articles.
+         */
+        function updateNewsDisplay() {
+            if (newsArticles.length === 0) {
+                noNewsMessage.classList.remove('hidden');
+                newsArticlesContainer.innerHTML = ''; // Clear existing articles if any
+            } else {
+                noNewsMessage.classList.add('hidden');
+                // Sort articles by timestamp in descending order (newest first)
+                const sortedArticles = [...newsArticles].sort((a, b) => b.timestamp - a.timestamp);
+                newsArticlesContainer.innerHTML = sortedArticles.map(renderNewsArticle).join('');
+            }
+        }
+
+        // --- WebSocket Implementation ---
+
+        /**
+         * Connects to the WebSocket server and sets up event handlers.
+         */
+        function connectWebSocket() {
+            loadingIndicator.classList.remove('hidden'); // Show loading indicator
+            ws = new WebSocket(WEBSOCKET_SERVER_URL);
+
+            ws.onopen = () => {
+                console.log('WebSocket connected to server.');
+                showMessage('Connected to news server.', 'success');
+                // Once connected, request initial news articles from the server.
+                ws.send(JSON.stringify({ type: 'GET_ALL_ARTICLES' }));
+            };
+
+            ws.onmessage = (event) => {
+                loadingIndicator.classList.add('hidden'); // Hide loading indicator on message
+                try {
+                    const data = JSON.parse(event.data);
+                    console.log('Received message from WebSocket:', data);
+
+                    if (data.type === 'NEW_ARTICLE') {
+                        // Add new article to the array and update display
+                        newsArticles.push(data.article);
+                        updateNewsDisplay();
+                        showMessage('New article published!', 'success');
+                    } else if (data.type === 'ALL_ARTICLES') {
+                        // When initial articles are received, populate the array and display
+                        newsArticles = data.articles;
+                        updateNewsDisplay();
+                        showMessage('Articles loaded.', 'info');
+                    } else if (data.type === 'NEW_COMMENT') {
+                        console.log('Handling NEW_COMMENT message...');
+                        const { articleId, comment } = data;
+                        const article = newsArticles.find(a => a.id === articleId);
+                        if (article) {
+                            if (!article.comments) {
+                                article.comments = [];
+                            }
+                            article.comments.push(comment);
+                            updateNewsDisplay(); // Re-render to show new comment
+                            console.log(`New comment for article ${articleId}: "${comment.commentText}" - UI updated.`);
+                        } else {
+                            console.warn(`Article with ID ${articleId} not found for comment.`);
+                        }
+                    } else if (data.type === 'NEW_REACTION') {
+                        console.log('Handling NEW_REACTION message...');
+                        const { articleId, reaction } = data;
+                        const article = newsArticles.find(a => a.id === articleId);
+                        if (article) {
+                            if (!article.reactions) {
+                                article.reactions = [];
+                            }
+                            article.reactions.push(reaction);
+                            updateNewsDisplay(); // Re-render to show updated reaction count
+                            console.log(`New reaction '${reaction.type}' for article ${articleId} - UI updated.`);
+                        } else {
+                            console.warn(`Article with ID ${articleId} not found for reaction.`);
+                        }
+                    } else if (data.type === 'ERROR') {
+                        showMessage(`Server Error: ${data.message}`, 'error');
+                    }
+                } catch (e) {
+                    console.error('Error parsing WebSocket message:', e);
+                    showMessage('Error receiving data from server.', 'error');
+                }
+            };
+
+            ws.onclose = () => {
+                console.log('WebSocket disconnected. Attempting to reconnect in 5 seconds...');
+                showMessage('Disconnected from server. Reconnecting...', 'error');
+                loadingIndicator.classList.remove('hidden'); // Show loading indicator during reconnect
+                setTimeout(connectWebSocket, 5000);
+            };
+
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+                showMessage('WebSocket connection error!', 'error');
+            };
+        }
+
+        // --- Event Listeners ---
+
+        // Toggle Admin Panel visibility
+        adminLoginBtn.addEventListener('click', () => {
+            adminPanel.classList.toggle('hidden');
+            if (!adminPanel.classList.contains('hidden')) { // If panel is now visible
+                if (isAdminLoggedIn) {
+                    adminLoginSection.classList.add('hidden');
+                    newsUploadFormContainer.classList.remove('hidden');
+                } else {
+                    adminLoginSection.classList.remove('hidden');
+                    newsUploadFormContainer.classList.add('hidden');
+                    adminPasswordInput.value = '';
+                    passwordError.classList.add('hidden');
+                }
+            }
+        });
+
+        // Admin password submission
+        passwordSubmitBtn.addEventListener('click', () => {
+            if (adminPasswordInput.value === ADMIN_PASSWORD) {
+                isAdminLoggedIn = true;
+                adminLoginSection.classList.add('hidden');
+                newsUploadFormContainer.classList.remove('hidden');
+                passwordError.classList.add('hidden');
+                adminLoginBtn.textContent = 'Admin Logged In';
+                adminLoginBtn.classList.remove('bg-white', 'text-blue-600');
+                adminLoginBtn.classList.add('bg-green-600', 'text-white');
+                showMessage('Admin logged in successfully!', 'success');
+            } else {
+                passwordError.classList.remove('hidden');
+                showMessage('Incorrect password.', 'error');
+            }
+        });
+
+        // Admin Logout
+        adminLogoutBtn.addEventListener('click', () => {
+            isAdminLoggedIn = false;
+            adminPanel.classList.add('hidden'); // Hide panel on logout
+            adminLoginBtn.textContent = 'Admin Login';
+            adminLoginBtn.classList.remove('bg-green-600', 'text-white');
+            adminLoginBtn.classList.add('bg-white', 'text-blue-600');
+            showMessage('Admin logged out.', 'info');
+        });
+
+        // News article submission
+        newsForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+
+            if (!isAdminLoggedIn) {
+                showMessage('You must be logged in as an admin to publish news.', 'error');
+                return;
+            }
+
+            const title = articleTitleInput.value;
+            const content = articleContentInput.value;
+            const imageFile = articleImageInput.files[0]; // Get the selected file
+
+            if (!title || !content) {
+                showMessage('Please fill in both title and content.', 'info');
+                return;
+            }
+
+            if (imageFile) {
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                    const base64Image = reader.result; // This is the Base64 string
+                    const newArticle = {
+                        title: title,
+                        content: content,
+                        imageUrl: base64Image, // Send Base64 string to backend
+                        timestamp: Date.now()
+                    };
+                    if (ws && ws.readyState === WebSocket.OPEN) {
+                        ws.send(JSON.stringify({ type: 'PUBLISH_ARTICLE', article: newArticle }));
+                        newsForm.reset();
+                        showMessage('Article sent for publishing (with image)!', 'success');
+                    } else {
+                        showMessage('WebSocket is not connected. Cannot publish article.', 'error');
+                    }
+                };
+                reader.onerror = (error) => {
+                    console.error('FileReader error:', error);
+                    showMessage('Error reading image file.', 'error');
+                };
+                reader.readAsDataURL(imageFile); // Read file as Base64 data URL
+            } else {
+                // No image selected, send article without image
+                const newArticle = {
+                    title: title,
+                    content: content,
+                    imageUrl: '', // Empty string if no image
+                    timestamp: Date.now()
+                };
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({ type: 'PUBLISH_ARTICLE', article: newArticle }));
+                    newsForm.reset();
+                    showMessage('Article sent for publishing (no image).', 'success');
+                } else {
+                    showMessage('WebSocket is not connected. Cannot publish article.', 'error');
+                }
+            }
+        });
+
+        // Event delegation for reaction and comment buttons/inputs
+        newsArticlesContainer.addEventListener('click', (e) => {
+            // Handle reaction buttons
+            const reactionButton = e.target.closest('.reaction-btn');
+            if (reactionButton) {
+                const articleId = parseInt(reactionButton.dataset.articleId); // Ensure ID is number
+                const reactionType = reactionButton.dataset.reactionType;
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({
+                        type: 'POST_REACTION',
+                        articleId: articleId,
+                        reaction: {
+                            type: reactionType,
+                            clientId: CLIENT_ID, // Use a simple client ID for now
+                            timestamp: Date.now()
+                        }
+                    }));
+                    console.log(`Reaction '${reactionType}' sent for article ${articleId}`);
+                } else {
+                    showMessage('WebSocket not connected. Cannot post reaction.', 'error');
+                }
+                return; // Prevent further handling if a reaction button was clicked
+            }
+
+            // Handle post comment buttons
+            const postCommentButton = e.target.closest('.post-comment-btn');
+            if (postCommentButton) {
+                const articleId = parseInt(postCommentButton.dataset.articleId); // Ensure ID is number
+                const articleCard = postCommentButton.closest('.bg-gray-50'); // Find the parent article card
+                const commentInput = articleCard.querySelector(`.comment-input[data-article-id="${articleId}"]`);
+                const userNameInput = articleCard.querySelector(`.comment-user-name[data-article-id="${articleId}"]`);
+
+                const commentText = commentInput.value.trim();
+                const userName = userNameInput.value.trim() || 'Anonymous'; // Default to Anonymous
+
+                if (commentText && ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({
+                        type: 'POST_COMMENT',
+                        articleId: articleId,
+                        comment: {
+                            userName: userName,
+                            commentText: commentText,
+                            timestamp: Date.now()
+                        }
+                    }));
+                    commentInput.value = ''; // Clear comment input field
+                    // Save username to local storage
+                    localStorage.setItem('userName', userName);
+                    console.log(`Comment sent for article ${articleId}: "${commentText}" by ${userName}`);
+                } else if (!commentText) {
+                    showMessage('Comment cannot be empty.', 'info');
+                } else {
+                    showMessage('WebSocket not connected. Cannot post comment.', 'error');
+                }
+            }
+        });
+
+
+        // --- Initial Setup ---
+        window.onload = () => {
+            connectWebSocket();
+            startRotatingFooterMessages(); // Start rotating messages on load
+            startFeaturedMessages(); // Start featured messages on load
+
+            // Pre-fill user name input if saved in local storage
+            const savedUserName = localStorage.getItem('userName');
+            if (savedUserName) {
+                // This will apply to any comment-user-name inputs rendered initially
+                document.querySelectorAll('.comment-user-name').forEach(input => {
+                    input.value = savedUserName;
+                });
+            }
+        };
+
+    </script>
+</body>
+
+ <!--
+    *********************************************************
+    * *
+    * M   M    OOO   N   N  PPPP    R R      EEEEE   SSS     SSS       *
+    * MM MM   O   O  NN  N  P   P   R  R     E      "S       S         *
+    * M M M   O   O  N N N  PPPP    RRR      EEEEE   SSS     SSS       *
+    * M   M   O   O  N  NN  P       R  R     E          "       "      *
+    * M   M    OOO   N   N  P       R   R    EEEEE   SSS     SSS       *
+    * *
+    * DONE AND DID BY MONPRESS                                         *
+    * *
+    *********************************************************
+    -->
+
+</html>
+
+
