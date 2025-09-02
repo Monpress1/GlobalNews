@@ -1,0 +1,14 @@
+name: Keep Render Server Awake
+
+on:
+  push:                  # 🔹 Run instantly on commit
+  schedule:
+    - cron: '*/10 * * * *'   # 🔹 Run every 10 minutes
+  workflow_dispatch:     # 🔹 Allow manual trigger
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Render WebSocket server
+        run: curl -s -o /dev/null -w "%{http_code}" https://newsapp-z14a.onrender.com
