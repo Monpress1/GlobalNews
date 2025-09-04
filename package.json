@@ -11,7 +11,7 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
-    "sqlite3": "^5.1.7",
+    "pg": "^8.12.0",
     "ws": "^8.18.3"
   }
 }
