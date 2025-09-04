@@ -1,4 +1,3 @@
-// server.js
 const WebSocket = require('ws');
 const { Pool } = require('pg');
 
@@ -13,7 +12,7 @@ const pool = new Pool({
         rejectUnauthorized: false,
     },
     // 👇 Add this line to disable prepared statements for Supabase's pooler
-    prepare: false, 
+    prepare: false,
 });
 
 /**
@@ -201,9 +200,24 @@ wss.on('connection', async (ws) => {
                     break;
                 case 'POST_REACTION':
                     const { articleId: reactionArticleId, reaction } = data;
-                    const addedReaction = await addReaction(reactionArticleId, reaction);
-                    // Broadcast the new reaction to all clients
-                    broadcast({ type: 'NEW_REACTION', articleId: reactionArticleId, reaction: addedReaction });
+                    try {
+                        const addedReaction = await addReaction(reactionArticleId, reaction);
+                        // Broadcast the new reaction to all clients
+                        broadcast({ type: 'NEW_REACTION', articleId: reactionArticleId, reaction: addedReaction });
+                    } catch (error) {
+                        // Check for the specific PostgreSQL foreign key violation error code (23503)
+                        if (error.code === '23503') {
+                            console.error('❌ Foreign key violation:', error.message);
+                            ws.send(JSON.stringify({
+                                type: 'ERROR',
+                                message: 'Cannot add reaction: The article ID provided does not exist.',
+                                articleId: reactionArticleId
+                            }));
+                        } else {
+                            // Re-throw the error if it's not a foreign key violation
+                            throw error;
+                        }
+                    }
                     break;
                 case 'GET_ALL_ARTICLES': // This case is primarily for initial connection, but kept for clarity
                     const articles = await getAllArticles();
@@ -226,3 +240,4 @@ wss.on('connection', async (ws) => {
         console.error('WebSocket error:', error);
     });
 });
+
