@@ -1,6 +1,6 @@
 // server.js
 const WebSocket = require('ws');
-const { Pool } = require('pg'); // 👈 Added 'pg' library
+const { Pool } = require('pg');
 
 // WebSocket server setup
 const wss = new WebSocket.Server({ port: 3000 });
@@ -8,10 +8,12 @@ console.log('WebSocket server started on ws://localhost:3000');
 
 // Database setup
 const pool = new Pool({
-    connectionString: process.env.newsdb, // 👈 Uses the 'newsdb' environment variable
+    connectionString: process.env.newsdb,
     ssl: {
         rejectUnauthorized: false,
     },
+    // 👇 Add this line to disable prepared statements for Supabase's pooler
+    prepare: false, 
 });
 
 /**
