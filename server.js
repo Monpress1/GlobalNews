@@ -1,111 +1,100 @@
 // server.js
 const WebSocket = require('ws');
-const sqlite3 = require('sqlite3').verbose();
-const path = require('path');
+const { Pool } = require('pg'); // 👈 Added 'pg' library
 
 // WebSocket server setup
 const wss = new WebSocket.Server({ port: 3000 });
 console.log('WebSocket server started on ws://localhost:3000');
 
 // Database setup
-const DB_PATH = path.resolve(__dirname, 'news.db');
-const db = new sqlite3.Database(DB_PATH, (err) => {
-    if (err) {
-        console.error('Error connecting to database:', err.message);
-    } else {
-        console.log('Connected to the SQLite database.');
-        initDb();
-    }
+const pool = new Pool({
+    connectionString: process.env.newsdb, // 👈 Uses the 'newsdb' environment variable
+    ssl: {
+        rejectUnauthorized: false,
+    },
 });
 
 /**
  * Initializes the database tables if they don't exist.
  */
-function initDb() {
-    db.serialize(() => {
-        db.run(`
+async function initDb() {
+    try {
+        const client = await pool.connect();
+        await client.query(`
             CREATE TABLE IF NOT EXISTS articles (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 title TEXT NOT NULL,
                 content TEXT NOT NULL,
                 imageUrl TEXT,
-                timestamp INTEGER NOT NULL
+                timestamp BIGINT NOT NULL
             )
-        `, (err) => {
-            if (err) console.error('Error creating articles table:', err.message);
-            else console.log('Articles table ensured.');
-        });
-
-        db.run(`
+        `);
+        await client.query(`
             CREATE TABLE IF NOT EXISTS comments (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 article_id INTEGER NOT NULL,
                 userName TEXT NOT NULL,
                 commentText TEXT NOT NULL,
-                timestamp INTEGER NOT NULL,
+                timestamp BIGINT NOT NULL,
                 FOREIGN KEY (article_id) REFERENCES articles(id) ON DELETE CASCADE
             )
-        `, (err) => {
-            if (err) console.error('Error creating comments table:', err.message);
-            else console.log('Comments table ensured.');
-        });
-
-        db.run(`
+        `);
+        await client.query(`
             CREATE TABLE IF NOT EXISTS reactions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 article_id INTEGER NOT NULL,
                 clientId TEXT NOT NULL,
-                type TEXT NOT NULL, -- 'thumbs_up', 'love', 'sad'
-                timestamp INTEGER NOT NULL,
+                type TEXT NOT NULL,
+                timestamp BIGINT NOT NULL,
                 FOREIGN KEY (article_id) REFERENCES articles(id) ON DELETE CASCADE
             )
-        `, (err) => {
-            if (err) console.error('Error creating reactions table:', err.message);
-            else console.log('Reactions table ensured.');
-        });
-    });
+        `);
+        console.log('✅ PostgreSQL tables ensured.');
+        client.release();
+    } catch (err) {
+        console.error('❌ Error creating PostgreSQL tables:', err.message);
+    }
 }
+initDb();
+
+// ----------------------------------------------------
 
 /**
  * Fetches all articles along with their comments and reactions.
  * @returns {Promise<Array>} A promise that resolves to an array of article objects.
  */
 async function getAllArticles() {
-    return new Promise((resolve, reject) => {
-        db.all("SELECT * FROM articles ORDER BY timestamp DESC", async (err, articles) => {
-            if (err) {
-                return reject(err);
-            }
+    try {
+        const result = await pool.query("SELECT * FROM articles ORDER BY timestamp DESC");
+        const articles = result.rows;
 
-            const articlesWithDetails = [];
-            for (const article of articles) {
-                const comments = await new Promise((res, rej) => {
-                    db.all("SELECT userName, commentText, timestamp FROM comments WHERE article_id = ? ORDER BY timestamp ASC", [article.id], (err, rows) => {
-                        if (err) rej(err);
-                        else res(rows);
-                    });
-                });
+        const articlesWithDetails = [];
+        for (const article of articles) {
+            const commentsResult = await pool.query(
+                "SELECT userName, commentText, timestamp FROM comments WHERE article_id = $1 ORDER BY timestamp ASC",
+                [article.id]
+            );
 
-                const reactions = await new Promise((res, rej) => {
-                    db.all("SELECT clientId, type, timestamp FROM reactions WHERE article_id = ?", [article.id], (err, rows) => {
-                        if (err) rej(err);
-                        else res(rows);
-                    });
-                });
+            const reactionsResult = await pool.query(
+                "SELECT clientId, type, timestamp FROM reactions WHERE article_id = $1",
+                [article.id]
+            );
 
-                articlesWithDetails.push({
-                    id: article.id,
-                    title: article.title,
-                    content: article.content,
-                    imageUrl: article.imageUrl,
-                    timestamp: article.timestamp,
-                    comments: comments,
-                    reactions: reactions
-                });
-            }
-            resolve(articlesWithDetails);
-        });
-    });
+            articlesWithDetails.push({
+                id: article.id,
+                title: article.title,
+                content: article.content,
+                imageUrl: article.imageurl,
+                timestamp: article.timestamp,
+                comments: commentsResult.rows,
+                reactions: reactionsResult.rows
+            });
+        }
+        return articlesWithDetails;
+    } catch (error) {
+        console.error('Error fetching articles:', error);
+        throw error;
+    }
 }
 
 /**
@@ -114,18 +103,16 @@ async function getAllArticles() {
  * @returns {Promise<object>} A promise that resolves to the inserted article with its ID.
  */
 async function addArticle(article) {
-    return new Promise((resolve, reject) => {
-        db.run(
-            "INSERT INTO articles (title, content, imageUrl, timestamp) VALUES (?, ?, ?, ?)",
-            [article.title, article.content, article.imageUrl, article.timestamp],
-            function(err) { // Use function() for 'this' context
-                if (err) {
-                    return reject(err);
-                }
-                resolve({ id: this.lastID, ...article });
-            }
+    try {
+        const result = await pool.query(
+            "INSERT INTO articles (title, content, imageUrl, timestamp) VALUES ($1, $2, $3, $4) RETURNING id",
+            [article.title, article.content, article.imageUrl, article.timestamp]
         );
-    });
+        return { id: result.rows[0].id, ...article };
+    } catch (error) {
+        console.error('Error adding article:', error);
+        throw error;
+    }
 }
 
 /**
@@ -135,18 +122,16 @@ async function addArticle(article) {
  * @returns {Promise<object>} A promise that resolves to the inserted comment.
  */
 async function addComment(articleId, comment) {
-    return new Promise((resolve, reject) => {
-        db.run(
-            "INSERT INTO comments (article_id, userName, commentText, timestamp) VALUES (?, ?, ?, ?)",
-            [articleId, comment.userName, comment.commentText, comment.timestamp],
-            function(err) {
-                if (err) {
-                    return reject(err);
-                }
-                resolve({ id: this.lastID, ...comment });
-            }
+    try {
+        const result = await pool.query(
+            "INSERT INTO comments (article_id, userName, commentText, timestamp) VALUES ($1, $2, $3, $4) RETURNING id",
+            [articleId, comment.userName, comment.commentText, comment.timestamp]
         );
-    });
+        return { id: result.rows[0].id, ...comment };
+    } catch (error) {
+        console.error('Error adding comment:', error);
+        throw error;
+    }
 }
 
 /**
@@ -156,20 +141,17 @@ async function addComment(articleId, comment) {
  * @returns {Promise<object>} A promise that resolves to the inserted reaction.
  */
 async function addReaction(articleId, reaction) {
-    return new Promise((resolve, reject) => {
-        db.run(
-            "INSERT INTO reactions (article_id, clientId, type, timestamp) VALUES (?, ?, ?, ?)",
-            [articleId, reaction.clientId, reaction.type, reaction.timestamp],
-            function(err) {
-                if (err) {
-                    return reject(err);
-                }
-                resolve({ id: this.lastID, ...reaction });
-            }
+    try {
+        const result = await pool.query(
+            "INSERT INTO reactions (article_id, clientId, type, timestamp) VALUES ($1, $2, $3, $4) RETURNING id",
+            [articleId, reaction.clientId, reaction.type, reaction.timestamp]
         );
-    });
+        return { id: result.rows[0].id, ...reaction };
+    } catch (error) {
+        console.error('Error adding reaction:', error);
+        throw error;
+    }
 }
-
 
 /**
  * Sends a message to all connected WebSocket clients.
@@ -182,6 +164,8 @@ function broadcast(message) {
         }
     });
 }
+
+// ----------------------------------------------------
 
 // WebSocket connection handling
 wss.on('connection', async (ws) => {
