@@ -1,6 +1,5 @@
 const WebSocket = require('ws');
-const { Pool } = require('pg');
-
+const { Pool } = require('pg'); 
 // WebSocket server setup
 const wss = new WebSocket.Server({ port: 3000 });
 console.log('WebSocket server started on ws://localhost:3000');
@@ -72,16 +71,24 @@ async function getAllArticles() {
         const articlesResult = await pool.query("SELECT * FROM articles ORDER BY timestamp DESC");
         const articles = articlesResult.rows;
         
-        // Fetch all comments and group them by article_id
-        const commentsResult = await pool.query("SELECT article_id, userName, commentText, timestamp FROM comments ORDER BY article_id, timestamp ASC");
+        // Fetch all comments and group them by article_id, using aliasing to fix casing
+        const commentsResult = await pool.query(`
+            SELECT article_id, username AS "userName", commenttext AS "commentText", timestamp
+            FROM comments
+            ORDER BY article_id, timestamp ASC
+        `);
         const commentsMap = commentsResult.rows.reduce((map, comment) => {
             if (!map[comment.article_id]) map[comment.article_id] = [];
             map[comment.article_id].push(comment);
             return map;
         }, {});
         
-        // Fetch all reactions and group them by article_id
-        const reactionsResult = await pool.query("SELECT article_id, clientId, type, timestamp FROM reactions ORDER BY article_id");
+        // Fetch all reactions and group them by article_id, using aliasing to fix casing
+        const reactionsResult = await pool.query(`
+            SELECT article_id, clientid AS "clientId", type, timestamp
+            FROM reactions
+            ORDER BY article_id
+        `);
         const reactionsMap = reactionsResult.rows.reduce((map, reaction) => {
             if (!map[reaction.article_id]) map[reaction.article_id] = [];
             map[reaction.article_id].push(reaction);
@@ -196,18 +203,30 @@ wss.on('connection', async (ws) => {
 
             switch (data.type) {
                 case 'PUBLISH_ARTICLE':
+                    if (!data.article || !data.article.title || !data.article.content || !data.article.timestamp) {
+                        ws.send(JSON.stringify({ type: 'ERROR', message: 'Missing required article data.' }));
+                        return;
+                    }
                     const newArticle = await addArticle(data.article);
                     // Broadcast the newly published article (with its ID from DB) to all clients
                     broadcast({ type: 'NEW_ARTICLE', article: newArticle });
                     break;
                 case 'POST_COMMENT':
                     const { articleId: commentArticleId, comment } = data;
+                    if (!comment || !comment.commentText || !comment.timestamp) {
+                         ws.send(JSON.stringify({ type: 'ERROR', message: 'Missing required comment data.' }));
+                         return;
+                    }
                     const addedComment = await addComment(commentArticleId, comment);
                     // Broadcast the new comment to all clients
                     broadcast({ type: 'NEW_COMMENT', articleId: commentArticleId, comment: addedComment });
                     break;
                 case 'POST_REACTION':
                     const { articleId: reactionArticleId, reaction } = data;
+                    if (!reaction || !reaction.type || !reaction.clientId || !reaction.timestamp) {
+                        ws.send(JSON.stringify({ type: 'ERROR', message: 'Missing required reaction data.' }));
+                        return;
+                    }
                     try {
                         const addedReaction = await addReaction(reactionArticleId, reaction);
                         // Broadcast the new reaction to all clients
