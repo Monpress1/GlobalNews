@@ -61,36 +61,44 @@ initDb();
 // ----------------------------------------------------
 
 /**
- * Fetches all articles along with their comments and reactions.
+ * Fetches all articles along with their comments and reactions efficiently.
+ * This refactored version avoids the N+1 query problem by fetching all related data
+ * in separate, optimized queries and then combining them in memory.
  * @returns {Promise<Array>} A promise that resolves to an array of article objects.
  */
 async function getAllArticles() {
     try {
-        const result = await pool.query("SELECT * FROM articles ORDER BY timestamp DESC");
-        const articles = result.rows;
+        // Fetch all articles
+        const articlesResult = await pool.query("SELECT * FROM articles ORDER BY timestamp DESC");
+        const articles = articlesResult.rows;
+        
+        // Fetch all comments and group them by article_id
+        const commentsResult = await pool.query("SELECT article_id, userName, commentText, timestamp FROM comments ORDER BY article_id, timestamp ASC");
+        const commentsMap = commentsResult.rows.reduce((map, comment) => {
+            if (!map[comment.article_id]) map[comment.article_id] = [];
+            map[comment.article_id].push(comment);
+            return map;
+        }, {});
+        
+        // Fetch all reactions and group them by article_id
+        const reactionsResult = await pool.query("SELECT article_id, clientId, type, timestamp FROM reactions ORDER BY article_id");
+        const reactionsMap = reactionsResult.rows.reduce((map, reaction) => {
+            if (!map[reaction.article_id]) map[reaction.article_id] = [];
+            map[reaction.article_id].push(reaction);
+            return map;
+        }, {});
 
-        const articlesWithDetails = [];
-        for (const article of articles) {
-            const commentsResult = await pool.query(
-                "SELECT userName, commentText, timestamp FROM comments WHERE article_id = $1 ORDER BY timestamp ASC",
-                [article.id]
-            );
-
-            const reactionsResult = await pool.query(
-                "SELECT clientId, type, timestamp FROM reactions WHERE article_id = $1",
-                [article.id]
-            );
-
-            articlesWithDetails.push({
-                id: article.id,
-                title: article.title,
-                content: article.content,
-                imageUrl: article.imageurl,
-                timestamp: article.timestamp,
-                comments: commentsResult.rows,
-                reactions: reactionsResult.rows
-            });
-        }
+        // Combine the data
+        const articlesWithDetails = articles.map(article => ({
+            id: article.id,
+            title: article.title,
+            content: article.content,
+            imageUrl: article.imageurl, // Note the lowercase 'imageurl' from PostgreSQL
+            timestamp: article.timestamp,
+            comments: commentsMap[article.id] || [],
+            reactions: reactionsMap[article.id] || []
+        }));
+        
         return articlesWithDetails;
     } catch (error) {
         console.error('Error fetching articles:', error);
